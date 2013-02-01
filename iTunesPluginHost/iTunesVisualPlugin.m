@@ -47,8 +47,7 @@ OSStatus HostVisualProc(void *appCookie, OSType message, struct PlayerMessageInf
 -(id)initWithMessage:(PlayerRegisterVisualPluginMessage)message {
 	self = [super init];
 	if (self) {
-		NSString *nameStr = [[[NSString alloc] initWithBytes:message.name length:sizeof(ITUniStr255) encoding:NSUTF16LittleEndianStringEncoding] autorelease];
-		self.pluginName = nameStr;
+		self.pluginName = [self stringFromITUniStr:message.name];
 		self.minSize = CGSizeMake((CGFloat)message.minWidth, (CGFloat)message.minHeight);
 		self.maxSize = CGSizeMake((CGFloat)message.maxWidth, (CGFloat)message.maxHeight);
 		self.numSpectrumChannels = message.numSpectrumChannels;
@@ -143,6 +142,22 @@ OSStatus HostVisualProc(void *appCookie, OSType message, struct PlayerMessageInf
 	if (self.needsViewInvalidate)
 		[self.pluginHostView setNeedsDisplay:YES];
 
+}
+
+#pragma mark -
+
+-(void)putString:(NSString *)str intoITUniStr:(ITUniStr255)uniStr {
+	if (str == nil) return;
+	NSString *trimmedString = str.length < 255 ? str : [str substringToIndex:255];
+	CFIndex length = CFStringGetLength((CFStringRef)trimmedString);
+	uniStr[0] = (UniChar)length;
+	CFStringGetCharacters((CFStringRef)trimmedString, CFRangeMake(0, length), &uniStr[1]);
+}
+
+-(NSString *)stringFromITUniStr:(ITUniStr255)uniStr {
+	NSUInteger length = uniStr[0];
+	if (length == 0) return nil;
+	return [[[NSString alloc] initWithCharacters:(const unichar *)uniStr + 1 length:length] autorelease];
 }
 
 #pragma mark -
