@@ -17,6 +17,7 @@
 		50C2954016BC143100995585 /* iTunesPlugin.m in Sources */ = {isa = PBXBuildFile; fileRef = 50C2953F16BC143100995585 /* iTunesPlugin.m */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		50C2954316BC1FAE00995585 /* iTunesVisualPlugin.m in Sources */ = {isa = PBXBuildFile; fileRef = 50C2954216BC1FAD00995585 /* iTunesVisualPlugin.m */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		50C2954516BC2A4800995585 /* iTunesAPI.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50C2954416BC2A4800995585 /* iTunesAPI.cpp */; };
+		50C2954916BD18DE00995585 /* art.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 50C2954816BD18DE00995585 /* art.jpg */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -43,6 +44,7 @@
 		50C2954216BC1FAD00995585 /* iTunesVisualPlugin.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = iTunesVisualPlugin.m; sourceTree = "<group>"; };
 		50C2954416BC2A4800995585 /* iTunesAPI.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = iTunesAPI.cpp; sourceTree = "<group>"; };
 		50C2954616BC2D9E00995585 /* iTunesVisualPluginInternal.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = iTunesVisualPluginInternal.h; sourceTree = "<group>"; };
+		50C2954816BD18DE00995585 /* art.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = art.jpg; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -115,6 +117,7 @@
 		50C2952316BC053000995585 /* Supporting Files */ = {
 			isa = PBXGroup;
 			children = (
+				50C2954816BD18DE00995585 /* art.jpg */,
 				50C2952416BC053000995585 /* iTunesPluginHost-Info.plist */,
 				50C2952516BC053000995585 /* InfoPlist.strings */,
 				50C2952816BC053000995585 /* main.m */,
@@ -189,6 +192,7 @@
 				50C2952716BC053000995585 /* InfoPlist.strings in Resources */,
 				50C2952D16BC053000995585 /* Credits.rtf in Resources */,
 				50C2953316BC053000995585 /* MainMenu.xib in Resources */,
+				50C2954916BD18DE00995585 /* art.jpg in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -340,6 +344,7 @@
 				50C2953816BC053000995585 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};

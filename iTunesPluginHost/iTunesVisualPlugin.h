@@ -7,17 +7,30 @@
 //
 
 #import <Foundation/Foundation.h>
+#include <CoreAudio/CoreAudioTypes.h>
+
+static NSString * const kVisualiserTrackTitleKey = @"title";
+static NSString * const kVisualiserTrackArtistKey = @"artist";
+static NSString * const kVisualiserTrackAlbumKey = @"album";
+static NSString * const kVisualiserTrackDurationKey = @"duration";
+static NSString * const kVisualiserTrackPositionKey = @"position";
+
+@protocol iTunesVisualPluginDelegate <NSObject>
+
+@end
 
 @interface iTunesVisualPlugin : NSObject
 
+@property (nonatomic, readwrite, strong) NSImage *coverArt;
+
 -(void)showConfiguration;
 
--(void)playbackStarted;
+-(void)playbackStartedWithMetaData:(NSDictionary *)metadata audioFormat:(AudioStreamBasicDescription)format;
 -(void)playbackStopped;
--(void)coverArtChanged:(NSImage *)coverArt;
 -(void)playbackPositionUpdated:(NSTimeInterval)position;
 
 -(void)activateInView:(NSView *)view;
 -(void)deactivate;
+
 
 @end

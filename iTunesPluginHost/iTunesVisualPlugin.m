@@ -31,17 +31,19 @@
 @property (nonatomic, readwrite, strong) NSTimer *redrawTimer;
 @property (nonatomic, readwrite, strong) NSView *pluginHostView;
 
+-(OSStatus)handleMessage:(OSType)message withInfo:(PlayerMessageInfo *)info;
+
 @end
 
-OSStatus HostVisualProc(void *appCookie, OSType message, struct PlayerMessageInfo *messageInfo) {
+OSStatus HostVisualProc(void *appCookie, OSType message, PlayerMessageInfo *messageInfo) {
 	iTunesVisualPlugin *visualiser = appCookie;
-	//return [plugin handleMessage:message withInfo:messageInfo];
-	return noErr;
+	return [visualiser handleMessage:message withInfo:messageInfo];
 }
 
 @implementation iTunesVisualPlugin {
 	VisualPluginProcPtr visualHandler;
 	void *visualHandlerRefCon;
+	NSImage *_art;
 }
 
 -(id)initWithMessage:(PlayerRegisterVisualPluginMessage)message {
@@ -69,6 +71,7 @@ OSStatus HostVisualProc(void *appCookie, OSType message, struct PlayerMessageInf
 		info.u.initMessage.messageMajorVersion = 10;
 		info.u.initMessage.messageMinorVersion = 4;
 		info.u.initMessage.appCookie = (void *)self;
+		info.u.initMessage.appProc = HostVisualProc;
 
 		NumVersion iTunesVersion;
 		iTunesVersion.majorRev = 4;
@@ -101,6 +104,7 @@ OSStatus HostVisualProc(void *appCookie, OSType message, struct PlayerMessageInf
 
 	[self.redrawTimer invalidate];
 	self.redrawTimer = nil;
+	self.coverArt = nil;
 
 	[self removeObserver:self forKeyPath:@"pluginHostView.frame"];
 
@@ -144,6 +148,36 @@ OSStatus HostVisualProc(void *appCookie, OSType message, struct PlayerMessageInf
 
 }
 
+-(void)setCoverArt:(NSImage *)coverArt {
+	[coverArt retain];
+	[_art release];
+	_art = coverArt;
+
+	if (visualHandler != NULL) [self updateCoverArt:_art];
+}
+
+-(NSImage *)coverArt {
+	return _art;
+}
+
+#pragma mark -
+
+-(OSStatus)handleMessage:(OSType)message withInfo:(PlayerMessageInfo *)info {
+
+	switch (message) {
+		case kVisualPluginCoverArtMessage:
+			[self updateCoverArt:_art];
+			return noErr;
+			break;
+
+		default:
+			NSLog(@"Got message!");
+			break;
+	}
+
+	return noErr;
+}
+
 #pragma mark -
 
 -(void)putString:(NSString *)str intoITUniStr:(ITUniStr255)uniStr {
@@ -170,8 +204,52 @@ OSStatus HostVisualProc(void *appCookie, OSType message, struct PlayerMessageInf
 	}
 }
 
--(void)playbackStarted {
-#warning Not implemented
+-(void)playbackStartedWithMetaData:(NSDictionary *)metadata audioFormat:(AudioStreamBasicDescription)format {
+
+	ITTrackInfo *trackInfo = malloc(sizeof(ITTrackInfo));
+	memset(trackInfo, 0, sizeof(ITTrackInfo));
+	trackInfo->validFields = 0;
+	trackInfo->recordLength = sizeof(ITTrackInfo);
+
+	NSString *trackName = metadata[kVisualiserTrackTitleKey];
+	if (trackName.length > 0) {
+		trackInfo->validFields |= kITTINameFieldMask;
+		[self putString:trackName intoITUniStr:trackInfo->name];
+	}
+
+	NSString *albumName = metadata[kVisualiserTrackAlbumKey];
+	if (albumName.length > 0) {
+		trackInfo->validFields |= kITTIAlbumFieldMask;
+		[self putString:albumName intoITUniStr:trackInfo->album];
+	}
+
+	NSString *artistName = metadata[kVisualiserTrackArtistKey];
+	if (artistName.length > 0) {
+		trackInfo->validFields |= kITTIArtistFieldMask;
+		[self putString:artistName intoITUniStr:trackInfo->artist];
+	}
+
+	NSNumber *duration = metadata[kVisualiserTrackDurationKey];
+	if (duration != nil) {
+		trackInfo->validFields |= kITTITotalTimeFieldMask;
+		trackInfo->totalTimeInMS = (UInt32)duration.doubleValue * 1000;
+	}
+
+	ITStreamInfo *streamInfo = malloc(sizeof(ITStreamInfo));
+	memset(streamInfo, 0, sizeof(ITStreamInfo));
+
+	VisualPluginMessageInfo info;
+	memset(&info, 0, sizeof(VisualPluginMessageInfo));
+	info.u.playMessage.audioFormat = format;
+	info.u.playMessage.bitRate = 160;
+	info.u.playMessage.volume = INT32_MAX;
+	info.u.playMessage.streamInfo = streamInfo;
+	info.u.playMessage.trackInfo = trackInfo;
+
+	visualHandler(kVisualPluginPlayMessage, &info, visualHandlerRefCon);
+
+	free(trackInfo);
+	free(streamInfo);
 }
 
 -(void)playbackStopped {
@@ -180,7 +258,7 @@ OSStatus HostVisualProc(void *appCookie, OSType message, struct PlayerMessageInf
 	visualHandler(kVisualPluginStopMessage, &info, visualHandlerRefCon);
 }
 
--(void)coverArtChanged:(NSImage *)coverArt {
+-(void)updateCoverArt:(NSImage *)coverArt {
 	struct VisualPluginMessageInfo info;
 	memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
 
