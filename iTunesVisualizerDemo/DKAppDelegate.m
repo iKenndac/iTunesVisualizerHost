@@ -20,7 +20,7 @@
 	// Insert code here to initialize your application
 	self.host = [iTunesPluginHost new];
 	iTunesPlugin *plugin = [self.host.plugins lastObject];
-	iTunesVisualPlugin *visualPlugin = [plugin.visualisers lastObject];
+	iTunesVisualPlugin *visualPlugin = [plugin.visualizers lastObject];
 	[visualPlugin activateInView:self.window.contentView];
 
 	NSDictionary *metadata = @{kVisualiserTrackDurationKey : @(30.0),

@@ -23,7 +23,7 @@ typedef OSStatus (*iTunesPluginMainMachO)(OSType message, PluginMessageInfo *mes
 -(OSStatus)handleMessage:(OSType)message withInfo:(PlayerMessageInfo *)info;
 
 @property (nonatomic, readwrite, strong) NSBundle *pluginBundle;
-@property (nonatomic, readwrite, strong) NSArray *visualisers;
+@property (nonatomic, readwrite, strong) NSArray *visualizers;
 
 @end
 
@@ -41,7 +41,7 @@ OSStatus HostAppProc(void *appCookie, OSType message, struct PlayerMessageInfo *
 -(id)initWithBundle:(NSBundle *)bundle {
 	self = [super init];
 	if (self) {
-		self.visualisers = [[NSArray new] autorelease];
+		self.visualizers = [[NSArray new] autorelease];
 		self.pluginBundle = bundle;
 	}
 	return self;
@@ -49,7 +49,7 @@ OSStatus HostAppProc(void *appCookie, OSType message, struct PlayerMessageInfo *
 
 -(void)dealloc {
 
-	self.visualisers = nil;
+	self.visualizers = nil;
 
 	PluginMessageInfo info;
 	memset(&info, 0, sizeof(PluginMessageInfo));
@@ -120,7 +120,7 @@ OSStatus HostAppProc(void *appCookie, OSType message, struct PlayerMessageInfo *
 -(OSStatus)handleRegisterVisualPluginMessage:(PlayerRegisterVisualPluginMessage)message {
 
 	iTunesVisualPlugin *visualiser = [[iTunesVisualPlugin alloc] initWithMessage:message];
-	if (visualiser) self.visualisers = [self.visualisers arrayByAddingObject:visualiser];
+	if (visualiser) self.visualizers = [self.visualizers arrayByAddingObject:visualiser];
 	[visualiser release];
 
 	return noErr;

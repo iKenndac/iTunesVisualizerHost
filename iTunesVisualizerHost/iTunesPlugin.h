@@ -14,6 +14,6 @@
 -(id)initWithBundle:(NSBundle *)bundle;
 -(void)load;
 
-@property (nonatomic, readonly, strong) NSArray *visualisers;
+@property (nonatomic, readonly, strong) NSArray *visualizers;
 
 @end
