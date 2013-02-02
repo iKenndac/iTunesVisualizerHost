@@ -20,7 +20,7 @@ typedef OSStatus (*iTunesPluginMainMachO)(OSType message, PluginMessageInfo *mes
 
 @interface iTunesPlugin ()
 
--(OSStatus)handleMessage:(OSType)message withInfo:(struct PlayerMessageInfo *)info;
+-(OSStatus)handleMessage:(OSType)message withInfo:(PlayerMessageInfo *)info;
 
 @property (nonatomic, readwrite, strong) NSBundle *pluginBundle;
 @property (nonatomic, readwrite, strong) NSArray *visualisers;
@@ -102,7 +102,7 @@ OSStatus HostAppProc(void *appCookie, OSType message, struct PlayerMessageInfo *
 
 #pragma mark - Handling Messages 
 
--(OSStatus)handleMessage:(OSType)message withInfo:(struct PlayerMessageInfo *)info {
+-(OSStatus)handleMessage:(OSType)message withInfo:(PlayerMessageInfo *)info {
 
 	switch (message) {
 		case kPlayerRegisterVisualPluginMessage:
