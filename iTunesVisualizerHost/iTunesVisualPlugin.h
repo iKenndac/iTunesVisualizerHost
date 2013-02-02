@@ -21,6 +21,14 @@ static NSString * const kVisualiserTrackPositionKey = @"position";
 
 @interface iTunesVisualPlugin : NSObject
 
+@property (nonatomic, readonly, copy) NSString *pluginName;
+@property (nonatomic, readonly) NSSize minSize;
+@property (nonatomic, readonly) NSSize maxSize;
+@property (nonatomic, readonly) NSInteger pulseRateHz;
+@property (nonatomic, readonly) NSInteger numWaveformChannels;
+@property (nonatomic, readonly) NSInteger numSpectrumChannels;
+@property (nonatomic, readonly) NumVersion version;
+
 @property (nonatomic, readwrite, strong) NSImage *coverArt;
 
 -(void)showConfiguration;
@@ -31,5 +39,7 @@ static NSString * const kVisualiserTrackPositionKey = @"position";
 
 -(void)activateInView:(NSView *)view;
 -(void)deactivate;
+
+-(void)containerViewFrameChanged;
 
 @end

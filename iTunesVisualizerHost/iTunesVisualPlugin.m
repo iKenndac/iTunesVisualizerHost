@@ -74,8 +74,8 @@ OSStatus HostVisualProc(void *appCookie, OSType message, PlayerMessageInfo *mess
 		info.u.initMessage.appProc = HostVisualProc;
 
 		NumVersion iTunesVersion;
-		iTunesVersion.majorRev = 4;
-		iTunesVersion.minorAndBugRev = 7;
+		iTunesVersion.majorRev = 10;
+		iTunesVersion.minorAndBugRev = 4;
 		iTunesVersion.nonRelRev = 0;
 		iTunesVersion.stage = 0;
 
@@ -87,8 +87,6 @@ OSStatus HostVisualProc(void *appCookie, OSType message, PlayerMessageInfo *mess
 
 		//Enable it
 		visualHandler(kVisualPluginEnableMessage, &info, visualHandlerRefCon);
-
-		[self addObserver:self forKeyPath:@"pluginHostView.frame" options:0 context:nil];
 
 		self.redrawTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 / 60.0
 															target:self
@@ -106,8 +104,6 @@ OSStatus HostVisualProc(void *appCookie, OSType message, PlayerMessageInfo *mess
 	self.redrawTimer = nil;
 	self.coverArt = nil;
 
-	[self removeObserver:self forKeyPath:@"pluginHostView.frame"];
-
 	if (visualHandler != NULL) {
 		struct VisualPluginMessageInfo info;
 		memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
@@ -122,17 +118,8 @@ OSStatus HostVisualProc(void *appCookie, OSType message, PlayerMessageInfo *mess
 	[super dealloc];
 }
 
-- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context
-{
-    if ([keyPath isEqualToString:@"pluginHostView.frame"]) {
-        if (self.pluginHostView != nil) {
-			struct VisualPluginMessageInfo info;
-			memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
-			visualHandler(kVisualPluginFrameChangedMessage, &info, visualHandlerRefCon);
-		}
-    } else {
-        [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
-    }
+-(NSString *)description {
+	return [NSString stringWithFormat:@"%@: %@", [super description], self.pluginName];
 }
 
 -(void)drawPlugin:(NSTimer *)aTimer {
@@ -305,6 +292,14 @@ OSStatus HostVisualProc(void *appCookie, OSType message, PlayerMessageInfo *mess
 	memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
 	visualHandler(kVisualPluginDeactivateMessage, &info, visualHandlerRefCon);
 	self.pluginHostView = nil;
+}
+
+-(void)containerViewFrameChanged {
+	if (self.pluginHostView != nil) {
+		struct VisualPluginMessageInfo info;
+		memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
+		visualHandler(kVisualPluginFrameChangedMessage, &info, visualHandlerRefCon);
+	}
 }
 
 @end
