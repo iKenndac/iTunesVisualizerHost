@@ -15,16 +15,14 @@ static NSString * const kVisualiserTrackAlbumKey = @"album";
 static NSString * const kVisualiserTrackDurationKey = @"duration";
 static NSString * const kVisualiserTrackPositionKey = @"position";
 
-@protocol iTunesVisualPluginDelegate <NSObject>
-
-@end
+@class iTunesVisualPlugin;
 
 @interface iTunesVisualPlugin : NSObject
 
 @property (nonatomic, readonly, copy) NSString *pluginName;
 @property (nonatomic, readonly) NSSize minSize;
 @property (nonatomic, readonly) NSSize maxSize;
-@property (nonatomic, readonly) NSInteger pulseRateHz;
+@property (nonatomic, readonly) NSUInteger pulseRateHz;
 @property (nonatomic, readonly) NSInteger numWaveformChannels;
 @property (nonatomic, readonly) NSInteger numSpectrumChannels;
 @property (nonatomic, readonly) NumVersion version;
@@ -41,5 +39,7 @@ static NSString * const kVisualiserTrackPositionKey = @"position";
 -(void)deactivate;
 
 -(void)containerViewFrameChanged;
+
+-(void)pushLeftAudioBuffer:(UInt8 *)left rightAudioBuffer:(UInt8 *)right;
 
 @end

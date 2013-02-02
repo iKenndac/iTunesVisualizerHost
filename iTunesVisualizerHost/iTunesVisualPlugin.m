@@ -8,6 +8,7 @@
 
 #import "iTunesVisualPlugin.h"
 #import "iTunesVisualAPI.h"
+#import <Accelerate/Accelerate.h>
 
 #if __has_feature(objc_arc)
 #error This class does not support ARC.
@@ -19,7 +20,7 @@
 
 @property (nonatomic, readwrite) NSSize minSize;
 @property (nonatomic, readwrite) NSSize maxSize;
-@property (nonatomic, readwrite) NSInteger pulseRateHz;
+@property (nonatomic, readwrite) NSUInteger pulseRateHz;
 @property (nonatomic, readwrite) NSInteger numWaveformChannels;
 @property (nonatomic, readwrite) NSInteger numSpectrumChannels;
 @property (nonatomic, readwrite) NumVersion version;
@@ -300,6 +301,109 @@ OSStatus HostVisualProc(void *appCookie, OSType message, PlayerMessageInfo *mess
 		memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
 		visualHandler(kVisualPluginFrameChangedMessage, &info, visualHandlerRefCon);
 	}
+}
+
+static void performAcceleratedFastFourierTransformWithWaveform(UInt8 *leftFrames, UInt8 *rightFrames, vDSP_Length frameCount, UInt8 *leftDestination, UInt8 *rightDestination);
+
+-(void)pushLeftAudioBuffer:(UInt8 *)left rightAudioBuffer:(UInt8 *)right {
+
+	struct VisualPluginMessageInfo info;
+	memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
+
+	info.u.pulseMessage.currentPositionInMS = 0;
+	info.u.pulseMessage.newPulseRateInHz = (UInt32)self.pulseRateHz;
+	info.u.pulseMessage.timeStampID = (UInt32)time(0);
+
+	RenderVisualData *data = malloc(sizeof(RenderVisualData));
+	data->numSpectrumChannels = self.numSpectrumChannels;
+	data->numWaveformChannels = self.numWaveformChannels;
+
+	memcpy(data->waveformData[0], left, 512);
+	memcpy(data->waveformData[1], right, 512);
+
+	performAcceleratedFastFourierTransformWithWaveform(left, right, 512, (UInt8 *)&data->spectrumData[0], (UInt8 *)&data->spectrumData[1]);
+
+	info.u.pulseMessage.renderData = data;
+
+	@autoreleasepool {
+		visualHandler(kVisualPluginPulseMessage, &info, visualHandlerRefCon);
+	}
+
+	free(data);
+}
+#pragma mark -
+#pragma mark Fourier Transforms
+
+static double *leftInputRealBuffer = NULL;
+static double *leftInputImagBuffer = NULL;
+static double *rightInputRealBuffer = NULL;
+static double *rightInputImagBuffer = NULL;
+static double *leftChannelMagnitudes = NULL;
+static double *rightChannelMagnitudes = NULL;
+
+static vDSP_Length fftSetupForSampleCount = 0;
+static NSUInteger const fftMagnitudeExponent = 9; // Must be power of two
+static FFTSetupD fft_weights;
+
+static void performAcceleratedFastFourierTransformWithWaveform(UInt8 *leftFrames, UInt8 *rightFrames, vDSP_Length frameCount, UInt8 *leftDestination, UInt8 *rightDestination) {
+	if (leftDestination == NULL || rightDestination == NULL || leftFrames == NULL || rightFrames == NULL || frameCount == 0)
+		return;
+
+    if (frameCount != fftSetupForSampleCount) {
+        /* Allocate memory to store split-complex input and output data */
+
+		/* Setup FFT weights (twiddle factors) */
+		fft_weights = vDSP_create_fftsetupD(fftMagnitudeExponent, kFFTRadix2);
+		
+        if (leftChannelMagnitudes != NULL) free(leftChannelMagnitudes);
+        if (rightChannelMagnitudes != NULL) free(rightChannelMagnitudes);
+		leftChannelMagnitudes = (double *)malloc(exp2(fftMagnitudeExponent) * sizeof(double));
+        rightChannelMagnitudes = (double *)malloc(exp2(fftMagnitudeExponent) * sizeof(double));
+
+        if (leftInputRealBuffer != NULL) free(leftInputRealBuffer);
+        if (leftInputImagBuffer != NULL) free(leftInputImagBuffer);
+
+        leftInputRealBuffer = (double *)malloc(frameCount * sizeof(double));
+        leftInputImagBuffer = (double *)malloc(frameCount * sizeof(double));
+
+        if (rightInputRealBuffer != NULL) free(rightInputRealBuffer);
+        if (rightInputImagBuffer != NULL) free(rightInputImagBuffer);
+
+        rightInputRealBuffer = (double *)malloc(frameCount * sizeof(double));
+        rightInputImagBuffer = (double *)malloc(frameCount * sizeof(double));
+
+        fftSetupForSampleCount = frameCount;
+    }
+
+    memset(leftInputRealBuffer, 0, frameCount * sizeof(double));
+    memset(rightInputRealBuffer, 0, frameCount * sizeof(double));
+    memset(leftInputImagBuffer, 0, frameCount * sizeof(double));
+    memset(rightInputImagBuffer, 0, frameCount * sizeof(double));
+
+    DSPDoubleSplitComplex leftInput = {leftInputRealBuffer, leftInputImagBuffer};
+    DSPDoubleSplitComplex rightInput = {rightInputRealBuffer, rightInputImagBuffer};
+
+    // Left
+    for (int i = 0; i < frameCount; i++) {
+        leftInput.realp[i] = ((double)leftFrames[i] - 128.0) / 128.0;
+        rightInput.realp[i] = ((double)rightFrames[i] - 128.0) / 128.0;
+    }
+
+    /* 1D in-place complex FFT */
+    vDSP_fft_zipD(fft_weights, &leftInput, 1, fftMagnitudeExponent, FFT_FORWARD);
+    // Get magnitudes
+    vDSP_zvmagsD(&leftInput, 1, leftChannelMagnitudes, 1, exp2(fftMagnitudeExponent));
+
+    /* 1D in-place complex FFT */
+    vDSP_fft_zipD(fft_weights, &rightInput, 1, fftMagnitudeExponent, FFT_FORWARD);
+    // Get magnitudes
+    vDSP_zvmagsD(&rightInput, 1, rightChannelMagnitudes, 1, exp2(fftMagnitudeExponent));
+
+	for (int i = 0; i < frameCount; i++) {
+		leftDestination[i] = (leftChannelMagnitudes[i] * 255);
+		rightDestination[i] = (rightChannelMagnitudes[i] * 255);
+	}
+
 }
 
 @end
