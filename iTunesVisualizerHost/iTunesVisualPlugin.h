@@ -32,5 +32,4 @@ static NSString * const kVisualiserTrackPositionKey = @"position";
 -(void)activateInView:(NSView *)view;
 -(void)deactivate;
 
-
 @end
