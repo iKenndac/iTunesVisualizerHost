@@ -45,7 +45,15 @@ OSStatus HostVisualProc(void *appCookie, OSType message, PlayerMessageInfo *mess
 	VisualPluginProcPtr visualHandler;
 	void *visualHandlerRefCon;
 	NSImage *_art;
+	double *leftInputRealBuffer;
+	double *leftInputImagBuffer;
+	double *rightInputRealBuffer;
+	double *rightInputImagBuffer;
+	vDSP_Length fftSetupForSampleCount;
+	FFTSetupD fft_weights;
 }
+
+static NSUInteger const fftMagnitudeExponent = 9;
 
 -(id)initWithMessage:(PlayerRegisterVisualPluginMessage)message {
 	self = [super init];
@@ -66,6 +74,9 @@ OSStatus HostVisualProc(void *appCookie, OSType message, PlayerMessageInfo *mess
 		BOOL usesSubView = (message.options & kVisualUsesSubview) == kVisualUsesSubview;
 
 		self.needsViewInvalidate = (is3dOnly == NO && usesSubView == NO);
+
+		/* Setup FFT weights (twiddle factors) */
+		fft_weights = vDSP_create_fftsetupD(fftMagnitudeExponent, kFFTRadix2);
 
 		struct VisualPluginMessageInfo info;
 		memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
@@ -112,6 +123,9 @@ OSStatus HostVisualProc(void *appCookie, OSType message, PlayerMessageInfo *mess
 		visualHandlerRefCon = NULL;
 		visualHandler = NULL;
 	}
+
+	// vDSP
+	vDSP_destroy_fftsetupD(fft_weights);
 
 	self.pluginHostView = nil;
 	self.pluginName = nil;
@@ -303,9 +317,7 @@ OSStatus HostVisualProc(void *appCookie, OSType message, PlayerMessageInfo *mess
 	}
 }
 
-static void performAcceleratedFastFourierTransformWithWaveform(UInt8 *leftFrames, UInt8 *rightFrames, vDSP_Length frameCount, UInt8 *leftDestination, UInt8 *rightDestination);
-
--(void)pushLeftAudioBuffer:(UInt8 *)left rightAudioBuffer:(UInt8 *)right {
+-(void)pushLeftAudioBuffer:(Float32	*)left rightAudioBuffer:(Float32 *)right {
 
 	struct VisualPluginMessageInfo info;
 	memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
@@ -317,48 +329,43 @@ static void performAcceleratedFastFourierTransformWithWaveform(UInt8 *leftFrames
 	RenderVisualData *data = malloc(sizeof(RenderVisualData));
 	data->numSpectrumChannels = self.numSpectrumChannels;
 	data->numWaveformChannels = self.numWaveformChannels;
-
-	memcpy(data->waveformData[0], left, 512);
-	memcpy(data->waveformData[1], right, 512);
-
-	performAcceleratedFastFourierTransformWithWaveform(left, right, 512, (UInt8 *)&data->spectrumData[0], (UInt8 *)&data->spectrumData[1]);
-
 	info.u.pulseMessage.renderData = data;
 
+	// Perform FFT
+	[self performEightBitFFTWithWaveformsLeft:left
+										right:right
+								   frameCount:512
+								   leftResult:(UInt8 *)&data->spectrumData[0]
+								  rightResult:(UInt8 *)&data->spectrumData[1]];
+
+	// Convert floating-point buffers into 8-bit UInt8[].
+
+	for (UInt32 i = 0; i < 512; i++) {
+		data->waveformData[0][i] = ((left[i] + 1.0) * 128);
+		data->waveformData[1][i] = ((right[i] + 1.0) * 128);
+	}
+	
 	@autoreleasepool {
 		visualHandler(kVisualPluginPulseMessage, &info, visualHandlerRefCon);
 	}
 
 	free(data);
 }
+
 #pragma mark -
 #pragma mark Fourier Transforms
 
-static double *leftInputRealBuffer = NULL;
-static double *leftInputImagBuffer = NULL;
-static double *rightInputRealBuffer = NULL;
-static double *rightInputImagBuffer = NULL;
-static double *leftChannelMagnitudes = NULL;
-static double *rightChannelMagnitudes = NULL;
+-(void)performEightBitFFTWithWaveformsLeft:(Float32 *)leftFrames
+									 right:(Float32 *)rightFrames
+								frameCount:(vDSP_Length)frameCount
+								leftResult:(UInt8 *)leftDestination
+							   rightResult:(UInt8 *)rightDestination {
 
-static vDSP_Length fftSetupForSampleCount = 0;
-static NSUInteger const fftMagnitudeExponent = 9; // Must be power of two
-static FFTSetupD fft_weights;
-
-static void performAcceleratedFastFourierTransformWithWaveform(UInt8 *leftFrames, UInt8 *rightFrames, vDSP_Length frameCount, UInt8 *leftDestination, UInt8 *rightDestination) {
 	if (leftDestination == NULL || rightDestination == NULL || leftFrames == NULL || rightFrames == NULL || frameCount == 0)
 		return;
 
     if (frameCount != fftSetupForSampleCount) {
         /* Allocate memory to store split-complex input and output data */
-
-		/* Setup FFT weights (twiddle factors) */
-		fft_weights = vDSP_create_fftsetupD(fftMagnitudeExponent, kFFTRadix2);
-		
-        if (leftChannelMagnitudes != NULL) free(leftChannelMagnitudes);
-        if (rightChannelMagnitudes != NULL) free(rightChannelMagnitudes);
-		leftChannelMagnitudes = (double *)malloc(exp2(fftMagnitudeExponent) * sizeof(double));
-        rightChannelMagnitudes = (double *)malloc(exp2(fftMagnitudeExponent) * sizeof(double));
 
         if (leftInputRealBuffer != NULL) free(leftInputRealBuffer);
         if (leftInputImagBuffer != NULL) free(leftInputImagBuffer);
@@ -385,9 +392,12 @@ static void performAcceleratedFastFourierTransformWithWaveform(UInt8 *leftFrames
 
     // Left
     for (int i = 0; i < frameCount; i++) {
-        leftInput.realp[i] = ((double)leftFrames[i] - 128.0) / 128.0;
-        rightInput.realp[i] = ((double)rightFrames[i] - 128.0) / 128.0;
+        leftInput.realp[i] = (double)leftFrames[i];
+        rightInput.realp[i] = (double)rightFrames[i];
     }
+
+	double *leftChannelMagnitudes = (double *)malloc(exp2(fftMagnitudeExponent) * sizeof(double));
+	double *rightChannelMagnitudes = (double *)malloc(exp2(fftMagnitudeExponent) * sizeof(double));
 
     /* 1D in-place complex FFT */
     vDSP_fft_zipD(fft_weights, &leftInput, 1, fftMagnitudeExponent, FFT_FORWARD);
@@ -404,6 +414,8 @@ static void performAcceleratedFastFourierTransformWithWaveform(UInt8 *leftFrames
 		rightDestination[i] = (rightChannelMagnitudes[i] * 255);
 	}
 
+	free(leftChannelMagnitudes);
+	free(rightChannelMagnitudes);
 }
 
 @end

@@ -40,6 +40,6 @@ static NSString * const kVisualiserTrackPositionKey = @"position";
 
 -(void)containerViewFrameChanged;
 
--(void)pushLeftAudioBuffer:(UInt8 *)left rightAudioBuffer:(UInt8 *)right;
+-(void)pushLeftAudioBuffer:(Float32 *)left rightAudioBuffer:(Float32 *)right;
 
 @end
