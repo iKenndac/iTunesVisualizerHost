@@ -12,5 +12,6 @@
 @interface iTunesPluginHost : NSObject
 
 @property (nonatomic, readonly, strong) NSArray *plugins;
+@property (nonatomic, readonly, strong) NSArray *visualizers;
 
 @end

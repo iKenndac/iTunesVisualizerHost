@@ -11,8 +11,10 @@
 
 @interface iTunesPlugin : NSObject
 
++(dispatch_queue_t)pluginQueue;
+
 -(id)initWithBundle:(NSBundle *)bundle;
--(void)load;
+-(void)load:(dispatch_block_t)callback;
 
 @property (nonatomic, readonly, strong) NSArray *visualizers;
 

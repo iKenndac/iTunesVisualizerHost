@@ -33,9 +33,23 @@ OSStatus HostAppProc(void *appCookie, OSType message, struct PlayerMessageInfo *
 }
 
 @implementation iTunesPlugin {
+	// These should ONLY be touched on +[iTunesPlugin pluginQueue];
 	void *pluginHandle;
 	void *pluginMainFunctionHandle;
 	void *pluginMainRefCon;
+}
+
+static dispatch_queue_t pluginQueue;
+
++(void)initialize {
+	static dispatch_once_t onceToken;
+	dispatch_once(&onceToken, ^{
+		pluginQueue = dispatch_queue_create("org.danielkennett.iTunesPluginHost", DISPATCH_QUEUE_SERIAL);
+	});
+}
+
++(dispatch_queue_t)pluginQueue {
+	return pluginQueue;
 }
 
 -(id)initWithBundle:(NSBundle *)bundle {
@@ -50,54 +64,65 @@ OSStatus HostAppProc(void *appCookie, OSType message, struct PlayerMessageInfo *
 -(void)dealloc {
 
 	self.visualizers = nil;
+	self.pluginBundle = nil;
 
-	PluginMessageInfo info;
-	memset(&info, 0, sizeof(PluginMessageInfo));
-	iTunesPluginMainMachO pluginMain = pluginMainFunctionHandle;
-	pluginMain(kPluginPrepareToQuitMessage, &info, pluginMainRefCon);
-	pluginMain(kPluginCleanupMessage, &info, pluginMainRefCon);
+	void *outgoingPluginHandle = pluginHandle;
+	void *outgoingPluginMainFunctionHandle = pluginMainFunctionHandle;
+	void *outgoingPluginMainRefCon = pluginMainRefCon;
 
-	if (pluginHandle != NULL) {
-		if (dlclose(pluginHandle) != 0) {
-			const char *error = dlerror();
-			NSLog(@"%@", @(error));
-		}
-	}
 	pluginHandle = NULL;
 	pluginMainFunctionHandle = NULL;
+	pluginMainRefCon = NULL;
 
-	self.pluginBundle = nil;
+	dispatch_async([iTunesPlugin pluginQueue], ^{
+		PluginMessageInfo info;
+		memset(&info, 0, sizeof(PluginMessageInfo));
+		iTunesPluginMainMachO pluginMain = outgoingPluginMainFunctionHandle;
+		pluginMain(kPluginPrepareToQuitMessage, &info, outgoingPluginMainRefCon);
+		pluginMain(kPluginCleanupMessage, &info, outgoingPluginMainRefCon);
+
+		if (outgoingPluginHandle != NULL) {
+			if (dlclose(outgoingPluginHandle) != 0) {
+				const char *error = dlerror();
+				NSLog(@"%@", @(error));
+			}
+		}
+	});
 
 	[super dealloc];
 }
 
--(void)load {
+-(void)load:(dispatch_block_t)callback {
 
-	pluginHandle = dlopen([self.pluginBundle.executablePath UTF8String], RTLD_LAZY | RTLD_LOCAL);
-	const char *error = dlerror();
-	if (error != NULL) {
-		NSLog(@"%@", @(error));
-		return;
-	}
+	dispatch_async([iTunesPlugin pluginQueue], ^{
+		
+		pluginHandle = dlopen([self.pluginBundle.executablePath UTF8String], RTLD_LAZY | RTLD_LOCAL);
+		const char *error = dlerror();
+		if (error != NULL) {
+			NSLog(@"%@", @(error));
+			return;
+		}
 
-	pluginMainFunctionHandle = dlsym(pluginHandle, "iTunesPluginMainMachO");
-	error = dlerror();
-	if (error != NULL || pluginMainFunctionHandle == NULL) {
-		NSLog(@"%@", @(error));
-		return;
-	}
+		pluginMainFunctionHandle = dlsym(pluginHandle, "iTunesPluginMainMachO");
+		error = dlerror();
+		if (error != NULL || pluginMainFunctionHandle == NULL) {
+			NSLog(@"%@", @(error));
+			return;
+		}
 
-	PluginMessageInfo info;
-	memset(&info, 0, sizeof(PluginMessageInfo));
-	info.u.initMessage.appProc = HostAppProc;
-	info.u.initMessage.majorVersion = 10;
-	info.u.initMessage.minorVersion = 4;
-	info.u.initMessage.appCookie = (void *)self;
+		PluginMessageInfo info;
+		memset(&info, 0, sizeof(PluginMessageInfo));
+		info.u.initMessage.appProc = HostAppProc;
+		info.u.initMessage.majorVersion = 10;
+		info.u.initMessage.minorVersion = 4;
+		info.u.initMessage.appCookie = (void *)self;
 
-	iTunesPluginMainMachO pluginMain = pluginMainFunctionHandle;
-	void *ref = NULL;
-	pluginMain(kPluginInitMessage, &info, ref);
-	pluginMainRefCon = info.u.initMessage.refCon;
+		iTunesPluginMainMachO pluginMain = pluginMainFunctionHandle;
+		pluginMain(kPluginInitMessage, &info, NULL);
+		pluginMainRefCon = info.u.initMessage.refCon;
+
+		if (callback) dispatch_async(dispatch_get_main_queue(), callback);
+	});
 }
 
 #pragma mark - Handling Messages 
@@ -119,9 +144,13 @@ OSStatus HostAppProc(void *appCookie, OSType message, struct PlayerMessageInfo *
 
 -(OSStatus)handleRegisterVisualPluginMessage:(PlayerRegisterVisualPluginMessage)message {
 
-	iTunesVisualPlugin *visualiser = [[iTunesVisualPlugin alloc] initWithMessage:message];
-	if (visualiser) self.visualizers = [self.visualizers arrayByAddingObject:visualiser];
-	[visualiser release];
+	NSAssert(dispatch_get_current_queue() == pluginQueue, @"Callback on wrong queue!");
+	iTunesVisualPlugin *visualiser = [[[iTunesVisualPlugin alloc] initWithMessage:message] autorelease];
+	if (visualiser) {
+		dispatch_async(dispatch_get_main_queue(), ^{
+			self.visualizers = [self.visualizers arrayByAddingObject:visualiser];
+		});
+	}
 
 	return noErr;
 }

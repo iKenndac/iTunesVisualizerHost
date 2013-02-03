@@ -164,10 +164,10 @@
 			isa = PBXGroup;
 			children = (
 				50ADD86C16BD263000B6109F /* iTunes API */,
-				50ADD85816BD262E00B6109F /* iTunesPlugin.h */,
-				50ADD85916BD262E00B6109F /* iTunesPlugin.m */,
 				50ADD85A16BD262E00B6109F /* iTunesPluginHost.h */,
 				50ADD85B16BD262E00B6109F /* iTunesPluginHost.m */,
+				50ADD85816BD262E00B6109F /* iTunesPlugin.h */,
+				50ADD85916BD262E00B6109F /* iTunesPlugin.m */,
 				50ADD85E16BD262E00B6109F /* iTunesVisualPlugin.h */,
 				50ADD86016BD262E00B6109F /* iTunesVisualPluginInternal.h */,
 				50ADD85F16BD262E00B6109F /* iTunesVisualPlugin.m */,

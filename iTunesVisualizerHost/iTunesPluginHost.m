@@ -28,10 +28,36 @@
 			[foundPlugins addObjectsFromArray:[self scanDirectoryForVisualisers:[path stringByAppendingPathComponent:@"iTunes/iTunes Plug-ins"]]];
 
 		self.plugins = [NSArray arrayWithArray:foundPlugins];
-		[self loadPlugins];
+		
+		for (iTunesPlugin *plugin in self.plugins) {
+			[plugin addObserver:self forKeyPath:@"visualizers" options:NSKeyValueObservingOptionPrior context:nil];
+			[plugin load:nil];
+		}
 	}
 
 	return self;
+}
+
+-(void)dealloc {
+	for (iTunesPlugin *plugin in self.plugins)
+		[plugin removeObserver:self forKeyPath:@"visualizers"];
+}
+
+-(void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
+    if ([keyPath isEqualToString:@"visualizers"]) {
+
+		if ([change[NSKeyValueChangeNotificationIsPriorKey] boolValue])
+			[self willChangeValueForKey:@"visualizers"];
+		else
+			[self didChangeValueForKey:@"visualizers"];
+
+    } else {
+        [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
+    }
+}
+
+-(NSArray *)visualizers {
+	return [self.plugins valueForKeyPath:@"@unionOfArrays.visualizers"];
 }
 
 -(NSArray *)scanDirectoryForVisualisers:(NSString *)directoryPath {
@@ -64,11 +90,5 @@
 
 	return foundPlugins;
 }
-
--(void)loadPlugins {
-	for (iTunesPlugin *plugin in self.plugins)
-		[plugin load];
-}
-
 
 @end

@@ -9,6 +9,7 @@
 #import "iTunesVisualPlugin.h"
 #import "iTunesVisualAPI.h"
 #import <Accelerate/Accelerate.h>
+#import "iTunesPlugin.h"
 
 #if __has_feature(objc_arc)
 #error This class does not support ARC.
@@ -78,55 +79,55 @@ static NSUInteger const fftMagnitudeExponent = 9;
 		/* Setup FFT weights (twiddle factors) */
 		fft_weights = vDSP_create_fftsetupD(fftMagnitudeExponent, kFFTRadix2);
 
-		struct VisualPluginMessageInfo info;
-		memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
-		info.u.initMessage.messageMajorVersion = 10;
-		info.u.initMessage.messageMinorVersion = 4;
-		info.u.initMessage.appCookie = (void *)self;
-		info.u.initMessage.appProc = HostVisualProc;
+		dispatch_async([iTunesPlugin pluginQueue], ^{
+			struct VisualPluginMessageInfo info;
+			memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
+			info.u.initMessage.messageMajorVersion = 10;
+			info.u.initMessage.messageMinorVersion = 4;
+			info.u.initMessage.appCookie = (void *)self;
+			info.u.initMessage.appProc = HostVisualProc;
 
-		NumVersion iTunesVersion;
-		iTunesVersion.majorRev = 10;
-		iTunesVersion.minorAndBugRev = 4;
-		iTunesVersion.nonRelRev = 0;
-		iTunesVersion.stage = 0;
+			NumVersion iTunesVersion;
+			iTunesVersion.majorRev = 10;
+			iTunesVersion.minorAndBugRev = 4;
+			iTunesVersion.nonRelRev = 0;
+			iTunesVersion.stage = 0;
 
-		info.u.initMessage.appVersion = iTunesVersion;
+			info.u.initMessage.appVersion = iTunesVersion;
 
-		// Init the visual plugin
-		visualHandler(kVisualPluginInitMessage, &info, message.registerRefCon);
-		visualHandlerRefCon = info.u.initMessage.refCon;
+			// Init the visual plugin
+			visualHandler(kVisualPluginInitMessage, &info, message.registerRefCon);
+			visualHandlerRefCon = info.u.initMessage.refCon;
 
-		//Enable it
-		visualHandler(kVisualPluginEnableMessage, &info, visualHandlerRefCon);
-
-		self.redrawTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 / 60.0
-															target:self
-														  selector:@selector(drawPlugin:)
-														  userInfo:nil
-														   repeats:YES];
-
+			//Enable it
+			visualHandler(kVisualPluginEnableMessage, &info, visualHandlerRefCon);
+		});
+		
 	}
 	return self;
 }
 
 -(void)dealloc {
 
+	VisualPluginProcPtr outgoingVisualHandler = visualHandler;
+	void *outgoingVisualRefCon = visualHandlerRefCon;
+	
+	visualHandler = NULL;
+	visualHandlerRefCon = NULL;
+
+	dispatch_async([iTunesPlugin pluginQueue], ^{
+		if (outgoingVisualHandler != NULL) {
+			struct VisualPluginMessageInfo info;
+			memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
+			outgoingVisualHandler(kVisualPluginCleanupMessage, &info, outgoingVisualRefCon);
+		}
+	});
+
+	vDSP_destroy_fftsetupD(fft_weights);
+
 	[self.redrawTimer invalidate];
 	self.redrawTimer = nil;
 	self.coverArt = nil;
-
-	if (visualHandler != NULL) {
-		struct VisualPluginMessageInfo info;
-		memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
-		visualHandler(kVisualPluginCleanupMessage, &info, visualHandlerRefCon);
-		visualHandlerRefCon = NULL;
-		visualHandler = NULL;
-	}
-
-	// vDSP
-	vDSP_destroy_fftsetupD(fft_weights);
-
 	self.pluginHostView = nil;
 	self.pluginName = nil;
 	
@@ -141,13 +142,16 @@ static NSUInteger const fftMagnitudeExponent = 9;
 
 	if (!self.pluginHostView) return;
 
-	struct VisualPluginMessageInfo info;
-	memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
-	visualHandler(kVisualPluginDrawMessage, &info, visualHandlerRefCon);
+	dispatch_async([iTunesPlugin pluginQueue], ^{
+		struct VisualPluginMessageInfo info;
+		memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
+		visualHandler(kVisualPluginDrawMessage, &info, visualHandlerRefCon);
 
-	if (self.needsViewInvalidate)
-		[self.pluginHostView setNeedsDisplay:YES];
-
+		dispatch_async(dispatch_get_main_queue(), ^{
+			if (self.needsViewInvalidate)
+				[self.pluginHostView setNeedsDisplay:YES];
+		});
+	});
 }
 
 -(void)setCoverArt:(NSImage *)coverArt {
@@ -155,16 +159,20 @@ static NSUInteger const fftMagnitudeExponent = 9;
 	[_art release];
 	_art = coverArt;
 
-	if (visualHandler != NULL) [self updateCoverArt:_art];
+	dispatch_async([iTunesPlugin pluginQueue], ^{
+		if (visualHandler != NULL) [self updateCoverArt:_art];
+	});
 }
 
 -(NSImage *)coverArt {
 	return _art;
 }
 
-#pragma mark -
+#pragma mark - Internal Helpers (Plugin Queue Only)
 
 -(OSStatus)handleMessage:(OSType)message withInfo:(PlayerMessageInfo *)info {
+
+	NSAssert(dispatch_get_current_queue() == [iTunesPlugin pluginQueue], @"Callback on wrong queue!");
 
 	switch (message) {
 		case kVisualPluginCoverArtMessage:
@@ -180,87 +188,10 @@ static NSUInteger const fftMagnitudeExponent = 9;
 	return noErr;
 }
 
-#pragma mark -
-
--(void)putString:(NSString *)str intoITUniStr:(ITUniStr255)uniStr {
-	if (str == nil) return;
-	NSString *trimmedString = str.length < 255 ? str : [str substringToIndex:255];
-	CFIndex length = CFStringGetLength((CFStringRef)trimmedString);
-	uniStr[0] = (UniChar)length;
-	CFStringGetCharacters((CFStringRef)trimmedString, CFRangeMake(0, length), &uniStr[1]);
-}
-
--(NSString *)stringFromITUniStr:(ITUniStr255)uniStr {
-	NSUInteger length = uniStr[0];
-	if (length == 0) return nil;
-	return [[[NSString alloc] initWithCharacters:(const unichar *)uniStr + 1 length:length] autorelease];
-}
-
-#pragma mark -
-
--(void)showConfiguration {
-	if (self.wantsConfigure) {
-		struct VisualPluginMessageInfo info;
-		memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
-		visualHandler(kVisualPluginConfigureMessage, &info, visualHandlerRefCon);
-	}
-}
-
--(void)playbackStartedWithMetaData:(NSDictionary *)metadata audioFormat:(AudioStreamBasicDescription)format {
-
-	ITTrackInfo *trackInfo = malloc(sizeof(ITTrackInfo));
-	memset(trackInfo, 0, sizeof(ITTrackInfo));
-	trackInfo->validFields = 0;
-	trackInfo->recordLength = sizeof(ITTrackInfo);
-
-	NSString *trackName = metadata[kVisualiserTrackTitleKey];
-	if (trackName.length > 0) {
-		trackInfo->validFields |= kITTINameFieldMask;
-		[self putString:trackName intoITUniStr:trackInfo->name];
-	}
-
-	NSString *albumName = metadata[kVisualiserTrackAlbumKey];
-	if (albumName.length > 0) {
-		trackInfo->validFields |= kITTIAlbumFieldMask;
-		[self putString:albumName intoITUniStr:trackInfo->album];
-	}
-
-	NSString *artistName = metadata[kVisualiserTrackArtistKey];
-	if (artistName.length > 0) {
-		trackInfo->validFields |= kITTIArtistFieldMask;
-		[self putString:artistName intoITUniStr:trackInfo->artist];
-	}
-
-	NSNumber *duration = metadata[kVisualiserTrackDurationKey];
-	if (duration != nil) {
-		trackInfo->validFields |= kITTITotalTimeFieldMask;
-		trackInfo->totalTimeInMS = (UInt32)duration.doubleValue * 1000;
-	}
-
-	ITStreamInfo *streamInfo = malloc(sizeof(ITStreamInfo));
-	memset(streamInfo, 0, sizeof(ITStreamInfo));
-
-	VisualPluginMessageInfo info;
-	memset(&info, 0, sizeof(VisualPluginMessageInfo));
-	info.u.playMessage.audioFormat = format;
-	info.u.playMessage.bitRate = 160;
-	info.u.playMessage.volume = INT32_MAX;
-	info.u.playMessage.streamInfo = streamInfo;
-	info.u.playMessage.trackInfo = trackInfo;
-
-	visualHandler(kVisualPluginPlayMessage, &info, visualHandlerRefCon);
-
-	free(trackInfo);
-	free(streamInfo);
-}
-
--(void)playbackStopped {
-	struct VisualPluginMessageInfo info;
-	memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
-	visualHandler(kVisualPluginStopMessage, &info, visualHandlerRefCon);
-}
-
 -(void)updateCoverArt:(NSImage *)coverArt {
+
+	NSAssert(dispatch_get_current_queue() == [iTunesPlugin pluginQueue], @"Callback on wrong queue!");
+
 	struct VisualPluginMessageInfo info;
 	memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
 
@@ -285,39 +216,149 @@ static NSUInteger const fftMagnitudeExponent = 9;
 	[imageData release];
 }
 
+
+#pragma mark -
+
+-(void)putString:(NSString *)str intoITUniStr:(ITUniStr255)uniStr {
+	if (str == nil) return;
+	NSString *trimmedString = str.length < 255 ? str : [str substringToIndex:255];
+	CFIndex length = CFStringGetLength((CFStringRef)trimmedString);
+	uniStr[0] = (UniChar)length;
+	CFStringGetCharacters((CFStringRef)trimmedString, CFRangeMake(0, length), &uniStr[1]);
+}
+
+-(NSString *)stringFromITUniStr:(ITUniStr255)uniStr {
+	NSUInteger length = uniStr[0];
+	if (length == 0) return nil;
+	return [[[NSString alloc] initWithCharacters:(const unichar *)uniStr + 1 length:length] autorelease];
+}
+
+#pragma mark -
+
+-(void)showConfiguration {
+	if (!self.wantsConfigure) return;
+	dispatch_async([iTunesPlugin pluginQueue], ^{
+		struct VisualPluginMessageInfo info;
+		memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
+		visualHandler(kVisualPluginConfigureMessage, &info, visualHandlerRefCon);
+	});
+}
+
+-(void)playbackStartedWithMetaData:(NSDictionary *)metadata audioFormat:(AudioStreamBasicDescription)format {
+
+	dispatch_async([iTunesPlugin pluginQueue], ^{
+		ITTrackInfo *trackInfo = malloc(sizeof(ITTrackInfo));
+		memset(trackInfo, 0, sizeof(ITTrackInfo));
+		trackInfo->validFields = 0;
+		trackInfo->recordLength = sizeof(ITTrackInfo);
+
+		NSString *trackName = metadata[kVisualiserTrackTitleKey];
+		if (trackName.length > 0) {
+			trackInfo->validFields |= kITTINameFieldMask;
+			[self putString:trackName intoITUniStr:trackInfo->name];
+		}
+
+		NSString *albumName = metadata[kVisualiserTrackAlbumKey];
+		if (albumName.length > 0) {
+			trackInfo->validFields |= kITTIAlbumFieldMask;
+			[self putString:albumName intoITUniStr:trackInfo->album];
+		}
+
+		NSString *artistName = metadata[kVisualiserTrackArtistKey];
+		if (artistName.length > 0) {
+			trackInfo->validFields |= kITTIArtistFieldMask;
+			[self putString:artistName intoITUniStr:trackInfo->artist];
+		}
+
+		NSNumber *duration = metadata[kVisualiserTrackDurationKey];
+		if (duration != nil) {
+			trackInfo->validFields |= kITTITotalTimeFieldMask;
+			trackInfo->totalTimeInMS = (UInt32)duration.doubleValue * 1000;
+		}
+
+		ITStreamInfo *streamInfo = malloc(sizeof(ITStreamInfo));
+		memset(streamInfo, 0, sizeof(ITStreamInfo));
+
+		VisualPluginMessageInfo info;
+		memset(&info, 0, sizeof(VisualPluginMessageInfo));
+		info.u.playMessage.audioFormat = format;
+		info.u.playMessage.bitRate = 160;
+		info.u.playMessage.volume = INT32_MAX;
+		info.u.playMessage.streamInfo = streamInfo;
+		info.u.playMessage.trackInfo = trackInfo;
+
+		visualHandler(kVisualPluginPlayMessage, &info, visualHandlerRefCon);
+		
+		free(trackInfo);
+		free(streamInfo);
+	});
+}
+
+-(void)playbackStopped {
+	dispatch_async([iTunesPlugin pluginQueue], ^{
+		struct VisualPluginMessageInfo info;
+		memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
+		visualHandler(kVisualPluginStopMessage, &info, visualHandlerRefCon);
+	});
+}
+
 -(void)playbackPositionUpdated:(NSTimeInterval)position {
-	struct VisualPluginMessageInfo info;
-	memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
-	info.u.setPositionMessage.positionTimeInMS = (UInt32)position * 1000;
-	visualHandler(kVisualPluginSetPositionMessage, &info, visualHandlerRefCon);
+	dispatch_async([iTunesPlugin pluginQueue], ^{
+		struct VisualPluginMessageInfo info;
+		memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
+		info.u.setPositionMessage.positionTimeInMS = (UInt32)position * 1000;
+		visualHandler(kVisualPluginSetPositionMessage, &info, visualHandlerRefCon);
+	});
 }
 
 -(void)activateInView:(NSView *)view {
 	if (view == nil) return;
 	self.pluginHostView = view;
-	struct VisualPluginMessageInfo info;
-	memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
-	info.u.activateMessage.view = view;
-	visualHandler(kVisualPluginActivateMessage, &info, visualHandlerRefCon);
-	[self drawPlugin:nil];
+
+	dispatch_async([iTunesPlugin pluginQueue], ^{
+		struct VisualPluginMessageInfo info;
+		memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
+		info.u.activateMessage.view = view;
+		visualHandler(kVisualPluginActivateMessage, &info, visualHandlerRefCon);
+		dispatch_async(dispatch_get_main_queue(), ^{
+			[self drawPlugin:nil];
+			[self.redrawTimer invalidate];
+			self.redrawTimer = nil;
+			self.redrawTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 / 60.0
+																target:self
+															  selector:@selector(drawPlugin:)
+															  userInfo:nil
+															   repeats:YES];
+		});
+	});
 }
 
 -(void)deactivate {
-	struct VisualPluginMessageInfo info;
-	memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
-	visualHandler(kVisualPluginDeactivateMessage, &info, visualHandlerRefCon);
+
+	[self.redrawTimer invalidate];
+	self.redrawTimer = nil;
 	self.pluginHostView = nil;
+
+	dispatch_async([iTunesPlugin pluginQueue], ^{
+		struct VisualPluginMessageInfo info;
+		memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
+		visualHandler(kVisualPluginDeactivateMessage, &info, visualHandlerRefCon);
+	});
 }
 
 -(void)containerViewFrameChanged {
-	if (self.pluginHostView != nil) {
+	if (self.pluginHostView == nil) return;
+
+	dispatch_async([iTunesPlugin pluginQueue], ^{
 		struct VisualPluginMessageInfo info;
 		memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
 		visualHandler(kVisualPluginFrameChangedMessage, &info, visualHandlerRefCon);
-	}
+	});
 }
 
--(void)pushLeftAudioBuffer:(Float32	*)left rightAudioBuffer:(Float32 *)right {
+-(void)pushLeftAudioBuffer:(Float32 *)left rightAudioBuffer:(Float32 *)right {
+
+	NSAssert(dispatch_get_current_queue() == [iTunesPlugin pluginQueue], @"Callback on wrong queue!");
 
 	struct VisualPluginMessageInfo info;
 	memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
@@ -339,15 +380,12 @@ static NSUInteger const fftMagnitudeExponent = 9;
 								  rightResult:(UInt8 *)&data->spectrumData[1]];
 
 	// Convert floating-point buffers into 8-bit UInt8[].
-
 	for (UInt32 i = 0; i < 512; i++) {
 		data->waveformData[0][i] = ((left[i] + 1.0) * 128);
 		data->waveformData[1][i] = ((right[i] + 1.0) * 128);
 	}
 	
-	@autoreleasepool {
-		visualHandler(kVisualPluginPulseMessage, &info, visualHandlerRefCon);
-	}
+	visualHandler(kVisualPluginPulseMessage, &info, visualHandlerRefCon);
 
 	free(data);
 }
