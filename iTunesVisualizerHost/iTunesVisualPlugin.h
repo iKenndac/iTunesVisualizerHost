@@ -39,6 +39,7 @@ static NSString * const kVisualiserTrackPositionKey = @"position";
 -(void)deactivate;
 
 -(void)containerViewFrameChanged;
+-(void)containerViewChangedScreen;
 
 // WARNING: This MUST be called from the plugin queue ([iTunesPlugin pluginQueue]);
 -(void)pushLeftAudioBuffer:(Float32 *)left rightAudioBuffer:(Float32 *)right;

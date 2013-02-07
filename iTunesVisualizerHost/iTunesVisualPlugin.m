@@ -30,7 +30,6 @@
 @property (nonatomic, readwrite) BOOL wantsIdleMessages;
 @property (nonatomic, readwrite) BOOL wantsConfigure;
 
-@property (nonatomic, readwrite, strong) NSTimer *redrawTimer;
 @property (nonatomic, readwrite, strong) NSView *pluginHostView;
 
 -(OSStatus)handleMessage:(OSType)message withInfo:(PlayerMessageInfo *)info;
@@ -52,6 +51,23 @@ OSStatus HostVisualProc(void *appCookie, OSType message, PlayerMessageInfo *mess
 	double *rightInputImagBuffer;
 	vDSP_Length fftSetupForSampleCount;
 	FFTSetupD fft_weights;
+	CVDisplayLinkRef displayLink;
+}
+
+CVReturn VisualizerDisplayLinkCallback (CVDisplayLinkRef displayLink,
+										const CVTimeStamp *inNow,
+										const CVTimeStamp *inOutputTime,
+										CVOptionFlags flagsIn,
+										CVOptionFlags *flagsOut,
+										void *displayLinkContext) {
+
+	iTunesVisualPlugin *visualizer = displayLinkContext;
+	struct VisualPluginMessageInfo info;
+	memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
+	visualizer->visualHandler(kVisualPluginDrawMessage, &info, visualizer->visualHandlerRefCon);
+	if (visualizer.needsViewInvalidate)
+		[visualizer.pluginHostView setNeedsDisplay:YES];
+	return kCVReturnSuccess;
 }
 
 static NSUInteger const fftMagnitudeExponent = 9;
@@ -109,6 +125,8 @@ static NSUInteger const fftMagnitudeExponent = 9;
 
 -(void)dealloc {
 
+	[self deactivateDisplayLink];
+
 	VisualPluginProcPtr outgoingVisualHandler = visualHandler;
 	void *outgoingVisualRefCon = visualHandlerRefCon;
 	
@@ -124,9 +142,6 @@ static NSUInteger const fftMagnitudeExponent = 9;
 	});
 
 	vDSP_destroy_fftsetupD(fft_weights);
-
-	[self.redrawTimer invalidate];
-	self.redrawTimer = nil;
 	self.coverArt = nil;
 	self.pluginHostView = nil;
 	self.pluginName = nil;
@@ -136,22 +151,6 @@ static NSUInteger const fftMagnitudeExponent = 9;
 
 -(NSString *)description {
 	return [NSString stringWithFormat:@"%@: %@", [super description], self.pluginName];
-}
-
--(void)drawPlugin:(NSTimer *)aTimer {
-
-	if (!self.pluginHostView) return;
-
-	dispatch_async([iTunesPlugin pluginQueue], ^{
-		struct VisualPluginMessageInfo info;
-		memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
-		visualHandler(kVisualPluginDrawMessage, &info, visualHandlerRefCon);
-
-		dispatch_async(dispatch_get_main_queue(), ^{
-			if (self.needsViewInvalidate)
-				[self.pluginHostView setNeedsDisplay:YES];
-		});
-	});
 }
 
 -(void)setCoverArt:(NSImage *)coverArt {
@@ -168,7 +167,24 @@ static NSUInteger const fftMagnitudeExponent = 9;
 	return _art;
 }
 
-#pragma mark - Internal Helpers (Plugin Queue Only)
+#pragma mark - Internal Helpers (Main Queue)
+
+-(void)activateDisplayLink {
+	CVDisplayLinkCreateWithActiveCGDisplays(&displayLink);
+	[self containerViewChangedScreen];
+	CVDisplayLinkSetOutputCallback(displayLink, VisualizerDisplayLinkCallback, (void *)self);
+	CVDisplayLinkStart(displayLink);
+}
+
+-(void)deactivateDisplayLink {
+	if (displayLink != 0) {
+		CVDisplayLinkStop(displayLink);
+		CVDisplayLinkRelease(displayLink);
+		displayLink = 0;
+	}
+}
+
+#pragma mark - Internal Helpers (Plugin Queue)
 
 -(OSStatus)handleMessage:(OSType)message withInfo:(PlayerMessageInfo *)info {
 
@@ -321,24 +337,13 @@ static NSUInteger const fftMagnitudeExponent = 9;
 		info.u.activateMessage.view = view;
 		visualHandler(kVisualPluginActivateMessage, &info, visualHandlerRefCon);
 		dispatch_async(dispatch_get_main_queue(), ^{
-			[self drawPlugin:nil];
-			[self.redrawTimer invalidate];
-			self.redrawTimer = nil;
-			self.redrawTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 / 60.0
-																target:self
-															  selector:@selector(drawPlugin:)
-															  userInfo:nil
-															   repeats:YES];
+			[self activateDisplayLink];
 		});
 	});
 }
 
 -(void)deactivate {
-
-	[self.redrawTimer invalidate];
-	self.redrawTimer = nil;
-	self.pluginHostView = nil;
-
+	[self deactivateDisplayLink];
 	dispatch_async([iTunesPlugin pluginQueue], ^{
 		struct VisualPluginMessageInfo info;
 		memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
@@ -354,6 +359,15 @@ static NSUInteger const fftMagnitudeExponent = 9;
 		memset(&info, 0, sizeof(struct VisualPluginMessageInfo));
 		visualHandler(kVisualPluginFrameChangedMessage, &info, visualHandlerRefCon);
 	});
+}
+
+-(void)containerViewChangedScreen {
+	if (displayLink != 0) {
+		NSWindow *window = self.pluginHostView.window;
+		if (window == nil) return;
+		CGDirectDisplayID displayID = (CGDirectDisplayID)[[window.screen.deviceDescription objectForKey:@"NSScreenNumber"] intValue];
+		CVDisplayLinkSetCurrentCGDisplay(displayLink, displayID);
+	}
 }
 
 -(void)pushLeftAudioBuffer:(Float32 *)left rightAudioBuffer:(Float32 *)right {
