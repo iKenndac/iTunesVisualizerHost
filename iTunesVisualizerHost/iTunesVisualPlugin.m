@@ -175,7 +175,7 @@ static NSUInteger const fftMagnitudeExponent = 9;
 	NSAssert(dispatch_get_current_queue() == [iTunesPlugin pluginQueue], @"Callback on wrong queue!");
 
 	switch (message) {
-		case kVisualPluginCoverArtMessage:
+		case kPlayerRequestCurrentTrackCoverArtMessage:
 			[self updateCoverArt:_art];
 			return noErr;
 			break;
