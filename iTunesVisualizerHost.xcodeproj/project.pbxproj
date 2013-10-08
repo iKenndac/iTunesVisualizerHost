@@ -26,6 +26,8 @@
 		50C2953316BC053000995585 /* MainMenu.xib in Resources */ = {isa = PBXBuildFile; fileRef = 50C2953116BC053000995585 /* MainMenu.xib */; };
 		50C2954916BD18DE00995585 /* art.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 50C2954816BD18DE00995585 /* art.jpg */; };
 		50C2954F16BD24AC00995585 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 50C2951C16BC053000995585 /* Cocoa.framework */; };
+		50F2B73218049C85003D21A7 /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 50F2B73118049C85003D21A7 /* Accelerate.framework */; };
+		50F2B73418049C90003D21A7 /* CoreVideo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 50F2B73318049C90003D21A7 /* CoreVideo.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -65,6 +67,8 @@
 		50C2954816BD18DE00995585 /* art.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = art.jpg; sourceTree = "<group>"; };
 		50C2954E16BD24AC00995585 /* libiTunesVisualizerHost.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libiTunesVisualizerHost.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		50C2955216BD24AC00995585 /* iTunesVisualizerHost-Prefix.pch */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "iTunesVisualizerHost-Prefix.pch"; sourceTree = "<group>"; };
+		50F2B73118049C85003D21A7 /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
+		50F2B73318049C90003D21A7 /* CoreVideo.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreVideo.framework; path = System/Library/Frameworks/CoreVideo.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -72,6 +76,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				50F2B73418049C90003D21A7 /* CoreVideo.framework in Frameworks */,
+				50F2B73218049C85003D21A7 /* Accelerate.framework in Frameworks */,
 				50ADD85316BD257700B6109F /* libiTunesVisualizerHost.a in Frameworks */,
 				50C2951D16BC053000995585 /* Cocoa.framework in Frameworks */,
 			);
@@ -120,6 +126,8 @@
 		50C2951B16BC053000995585 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				50F2B73318049C90003D21A7 /* CoreVideo.framework */,
+				50F2B73118049C85003D21A7 /* Accelerate.framework */,
 				50C2951C16BC053000995585 /* Cocoa.framework */,
 				50C2951E16BC053000995585 /* Other Frameworks */,
 			);
